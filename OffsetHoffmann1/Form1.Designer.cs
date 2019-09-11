@@ -38,7 +38,7 @@
             this.Canva.BackColor = System.Drawing.Color.White;
             this.Canva.Location = new System.Drawing.Point(13, 13);
             this.Canva.Name = "Canva";
-            this.Canva.Size = new System.Drawing.Size(1000, 1000);
+            this.Canva.Size = new System.Drawing.Size(1072, 1000);
             this.Canva.TabIndex = 0;
             this.Canva.TabStop = false;
             this.Canva.Paint += new System.Windows.Forms.PaintEventHandler(this.Canva_Paint);
@@ -49,7 +49,7 @@
             // error
             // 
             this.error.AutoSize = true;
-            this.error.Location = new System.Drawing.Point(1020, 13);
+            this.error.Location = new System.Drawing.Point(1091, 13);
             this.error.Name = "error";
             this.error.Size = new System.Drawing.Size(14, 20);
             this.error.TabIndex = 1;
