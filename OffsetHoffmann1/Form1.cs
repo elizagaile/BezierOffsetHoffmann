@@ -11,12 +11,12 @@ namespace OffsetHoffmann1
     {
         Matrix<double> P = Matrix<double>.Build.Dense(4, 2); // matrica, kas satur galv enās līknes kontrolpunktus
 
-        double checkpointCount = 50; // cik gabalos sadala bezjē līkni dažādām pārbaudēm
-        double precision = 0.1; // vīles attāluma nepieciešamā precizitāte, te norādīta pikseļos
-        double distance = -18; // ja negatīvs - kreisajā pusē no pirmā kotrolpunkta, pozitīvs - pa labi
+        double checkpointCount = 100; // cik gabalos sadala bezjē līkni dažādām pārbaudēm
+        double precision = 0.3; // vīles attāluma nepieciešamā precizitāte, te norādīta pikseļos
+        double distance = 30; // ja negatīvs - kreisajā pusē no pirmā kotrolpunkta, pozitīvs - pa labi
         int movingPoint = -1; // nepieciešams līknes pārvietošanai ar peli
         List<double> splitValues = new List<double>(); // t vērtības, kurās nepieciešams sadalīt bezjē līkni
-        
+
 
         // inicalizācija
         public OffsetForm()
@@ -24,17 +24,17 @@ namespace OffsetHoffmann1
             InitializeComponent();
             
             // sākuma kontrolpunktu koordinātas:
-            P[0, 0] = 83; 
-            P[0, 1] = 303;
+            P[0, 0] = 200; 
+            P[0, 1] = 400;
 
-            P[1, 0] = 105;
-            P[1, 1] = 162;
+            P[1, 0] = 250;
+            P[1, 1] = 100;
 
-            P[2, 0] = 211;
-            P[2, 1] = 186;
+            P[2, 0] = 400;
+            P[2, 1] = 150;
 
-            P[3, 0] = 300;
-            P[3, 1] = 309;
+            P[3, 0] = 450;
+            P[3, 1] = 300;
 
         }
 
@@ -57,35 +57,39 @@ namespace OffsetHoffmann1
             splitValues.Add(0);
             splitValues.AddRange(BezierExtrema(P));
             splitValues.Add(1);
-            
+
             while (!IsParallel()) { } // atkārtoti izsauc funkciju, līdz līkne sadalīta tādos gabalos, ka sasniegta nepieciešamā precizitāte
             
-            // sadales vērtības sakārto, un katram segmentam uzzīmē paralēli
-            splitValues.Sort();
+            // katram segmentam uzzīmē paralēli
             for (int i = 0; i < splitValues.Count - 1; i++)
             {
-                Matrix<double> offset = HoffmannOffset(SplitBezier(splitValues[i], splitValues[i + 1], P));
-
+                Matrix<double> segment = SplitBezier(splitValues[i], splitValues[i + 1], P);
+                Matrix<double> offset = HoffmannOffset(segment);
                 e.Graphics.DrawBeziers(Pens.LightGray, MatrixToPointArray(offset));
 
-                if (DrawingInterval(offset).Item1 != -1)
+                Tuple<double, double> toDraw = DrawingInterval(offset, segment);
+                if (toDraw.Item1 != -1)
                 {
-                    Matrix<double> offsetSeam = SplitBezier(DrawingInterval(offset).Item1, DrawingInterval(offset).Item2, offset);
+                    Matrix<double> offsetSeam = SplitBezier(toDraw.Item1, toDraw.Item2, offset);
                     e.Graphics.DrawBeziers(Pens.Red, MatrixToPointArray(offsetSeam));
                 }
+
             }
-            
-            error.Text = "" + (splitValues.Count - 1); // lai redzētu, cik segmentos līkne sadalīta
+            error.Text = "Distance: " + distance;
+            //error.Text = "Segment count: " + (splitValues.Count - 1);
         }
 
-        private Tuple<double, double> DrawingInterval(Matrix<double> M)
+        // atrod kādā intervālā nepieciešams zīmēt vīli
+        private Tuple<double, double> DrawingInterval(Matrix<double> offset, Matrix<double> segment)
         {
+            //iegūst proporcionālo un reālo attālumu līdz līknei segmenta galapunktos:
+
             double startLength, endLength;
 
-            PointF start = PointAtValue(0, M);
+            PointF start = PointAtValue(0, offset);
             startLength = GetLength(start, PointAtValue(PointToBezier(start, P), P));
             
-            PointF end = PointAtValue(1, M);
+            PointF end = PointAtValue(1, offset);
             endLength = GetLength(end, PointAtValue(PointToBezier(end, P), P));
             
             if (Math.Abs(startLength - Math.Abs(distance)) <= precision)
@@ -94,14 +98,30 @@ namespace OffsetHoffmann1
                 {
                     return Tuple.Create<double, double>(0, 1); // abi gali safe, zīmē 0-1
                 }
-
+                
                 for (double t = 0; t <= 1; t += 1 / checkpointCount)
                 {
                     t = Math.Round(t, 2);
+                    end = PointAtValue(t, offset);
 
-                    end = PointAtValue(t, M);
-                    endLength = GetLength(end, PointAtValue(PointToBezier(end, P), P));
-                    if (Math.Abs(endLength - Math.Abs(distance)) > precision)
+                    PointF[] tmp = BezierDerivative(offset);
+                    PointF derivative = new PointF
+                    {
+                        X = (float)(tmp[0].X * (1 - t) * (1 - t) + 2 * tmp[1].X * (1 - t) * t + tmp[2].X * t * t),
+                        Y = (float)(tmp[0].Y * (1 - t) * (1 - t) + 2 * tmp[1].Y * (1 - t) * t + tmp[2].Y * t * t)
+                    };
+
+                    double A = derivative.Y;
+                    double B = -derivative.X;
+                    double C = derivative.X * end.Y - derivative.Y * end.X;
+
+                    PointF point1 = PointAtValue(t, segment);
+                    double value1 = A * point1.X + B * point1.Y + C;
+
+                    PointF point2 = PointAtValue(PointToBezier(end, P), P);
+                    double value2 = A * point2.X + B * point2.Y + C;
+
+                    if (value1 * value2 < 0)
                     {
                         return Tuple.Create<double, double>(0, t);
                     }
@@ -118,19 +138,34 @@ namespace OffsetHoffmann1
                 for (double t = 0; t <= 1; t += 1 / checkpointCount)
                 {
                     t = Math.Round(t, 2);
+                    start = PointAtValue(t, offset);
 
-                    start = PointAtValue(t, M);
-                    startLength = GetLength(start, PointAtValue(PointToBezier(start, P), P));
-                    if (Math.Abs(startLength - Math.Abs(distance)) <= precision)
+                    PointF[] tmp = BezierDerivative(offset);
+                    PointF derivative = new PointF
+                    {
+                        X = (float)(tmp[0].X * (1 - t) * (1 - t) + 2 * tmp[1].X * (1 - t) * t + tmp[2].X * t * t),
+                        Y = (float)(tmp[0].Y * (1 - t) * (1 - t) + 2 * tmp[1].Y * (1 - t) * t + tmp[2].Y * t * t)
+                    };
+
+                    double A = derivative.Y;
+                    double B = -derivative.X;
+                    double C = derivative.X * start.Y - derivative.Y * start.X;
+
+                    PointF point1 = PointAtValue(t, segment);
+                    double value1 = A * point1.X + B * point1.Y + C;
+
+                    PointF point2 = PointAtValue(PointToBezier(start, P), P);
+                    double value2 = A * point2.X + B * point2.Y + C;
+
+                    if (value1 * value2 > 0)
                     {
                         return Tuple.Create<double, double>(t, 1);
                     }
-                }
+                } 
             }
-
+            
             return Tuple.Create<double, double>(-1, -1);
         }
-
 
         // aprēķina paralēles kontrolpunktus, algoritms aprakstīts http://docs-hoffmann.de/bezier18122002.pdf
         private Matrix<double> HoffmannOffset(Matrix<double> P)
@@ -274,33 +309,26 @@ namespace OffsetHoffmann1
                 {
                     t = Math.Round(t, 2);
                     double length = GetLength(PointAtValue(t, segment), PointAtValue(t, offset));
-                    if (Math.Abs(length - Math.Abs(distance)) >= precision)
+                    if (Math.Abs(length - Math.Abs(distance)) >= precision/2)
                     {
                         newSplitValue = (splitValues[i] + splitValues[i + 1]) / 2; // ja paralēles segments nav pietiekmi precīzs, to sadala uz pusēm
-                        break;
+                        splitValues.Add(newSplitValue);
+                        return false;
                     }
                 }
             }
 
-            if (newSplitValue < 0)
-            {
-                return true;
-            }
-
-            else
-            {
-                splitValues.Add(newSplitValue);
-                return false;
-            }
+            return true;
         }
 
+        // atrod tuvāko punktu uz Bezjē līknes no patvaļīga punkta
         private double PointToBezier(PointF point, Matrix<double> M)
         {
-            double interval = checkpointCount;
+            double interval = 100;
 
             double tValue = 0;
             double minLength = Double.MaxValue;
-            for (double t = 0; t <= 1; t += 1 / checkpointCount) 
+            for (double t = 0; t <= 1; t += 1 / interval) 
             {
                 t = Math.Round(t, 2);
 
@@ -313,7 +341,7 @@ namespace OffsetHoffmann1
             }
             
             bool tmp = true;
-            while (tmp == true || 1 / interval > 0.00001) // vajag kādu mazu konstanti, lai iezvairītos no ieciklēšanās ???
+            while (tmp == true)
             {
                 tmp = false;
                 interval *= 2;
@@ -324,7 +352,7 @@ namespace OffsetHoffmann1
                 if (tNew.Item1 > 0)
                 {
                     lengthMinus = GetLength(point, PointAtValue(tNew.Item1, M));
-                    if (lengthMinus < minLength)
+                    if (minLength - lengthMinus > precision)
                     {
                         tValue = tNew.Item1;
                         minLength = lengthMinus;
@@ -334,7 +362,7 @@ namespace OffsetHoffmann1
                 if (tNew.Item2 < 1)
                 {
                     lengthPlus = GetLength(point, PointAtValue(tNew.Item2, M));
-                    if (lengthPlus < minLength)
+                    if (minLength - lengthPlus > precision)
                     {
                         tValue = tNew.Item2;
                         minLength = lengthPlus;
